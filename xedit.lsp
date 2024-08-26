@@ -1,4 +1,4 @@
-(defun c:xvg (/ code d apData dclRe dclName en ent f gr i cnt eachCol total inf thisKey appKeyList allKeyList xDatas loop lst1 lst2 lwplBackground n name nEnt oldEnt pd pt ptList ss str str1 txtList w ww x y xdTypeCode) 
+(defun c:xvg (/ code d apData dclRe dclName en ent f gr i cnt eachCol total inf thisKey appKeyList allKeyList xDatas loop lst1 lst2 lwplBackground n name nEnt oldEnt pt ptList ss str str1 txtList maxWide ww x y xdTypeCode) 
   ; 编辑实体的扩展数据
 
   ;; 错误处理
@@ -64,9 +64,6 @@
         )
         (entmod (modifyEntityDxf en 43 0.0))
       )
-    )
-    (if oldEnt 
-      (redraw oldEnt 4)
     )
   )
 
@@ -154,8 +151,8 @@
   ; (prompt "\n    鼠标移动查询信息，左键编辑，右键退出！")
   ;; 初始化变量
   (setq loop    t
-        i       0
         txtList '()
+        oldEnt  nil
   )
 
   ;; 创建一个临时多段线实体用于显示文本框
@@ -177,7 +174,6 @@
     (setq gr   (grread t 4 2)
           code (car gr)
           pt   (cadr gr)
-          pd   nil
     )
     (cond 
       ((= code 3) ; 鼠标左击
@@ -189,30 +185,28 @@
                ;; 创建临时DCL文件
                (setq dclName (vl-filename-mktemp "yx.dcl")
                      f       (open dclName "w")
+                     cnt     0
+                     total   0
                )
                (write-line "yx1:dialog {" f)
                (write-line "label = 扩展数据 ; " f)
                (write-line ":row {" f)
                (write-line ":column {" f)
-               (setq cnt   0
-                     total 0
-               )
-               ;; 计算控件列数
+               ;; 控制控件行列数量,单列最多15个
                (foreach appDatas xDatas 
                  (foreach data appDatas 
                    (setq total (1+ total))
                  )
                )
                (if (> total 15) 
-                 (progn 
-                   (setq eachCol (1+ (/ total 15)))
-                   (setq eachCol (1+ (/ total eachCol)))
+                 (setq eachCol (1+ (/ total 15))
+                       eachCol (1+ (/ total eachCol))
                  )
                  (setq eachCol 15)
                )
-               (setq allKeyList '())
 
-               ;; 为每个扩展数据生成对应的控件
+               ;; 为每个扩展数据生成对应的控件,记录key
+               (setq allKeyList '())
                (foreach appDatas xDatas 
                  (setq appKeyList '())
                  (foreach data appDatas 
@@ -222,10 +216,7 @@
                    )
                    (cond 
                      ;; 字符串组码
-                     ((= (type data) 'STR)
-                      (write-line (strcat "    :text { label =\"程序名\"" "; key = \"" cntStr "\"; value=\"" data "\";}") f)
-                      (setq rflag 1)
-                     )
+                     ((= (type data) 'STR) (write-line (strcat "    :text { label =\"程序名\"" "; key = \"" cntStr "\"; value=\"" data "\";}") f) (setq rflag 1))
                      ;; 列表组码
                      ((listp data)
                       (setq xdTypeCode    (car data)
@@ -277,7 +268,7 @@
                ;; 加载并显示DCL对话框
                (setq dclRe (load_dialog dclName))
                (new_dialog "yx1" dclRe)
-               (setq i 0)
+               ;  (setq i 0)
                (action_tile "e01" "(writeXData ent allKeyList)(done_dialog 1)")
                (start_dialog)
                (unload_dialog dclRe)
@@ -303,14 +294,14 @@
            (setq xDatas (cdr (assoc -3 (entget ent '("*")))))
          )
          (progn 
-           (setq cnt   0
-                 total 0
+           (setq cnt      0
+                 total    0
+                 allLines '()
            )
-           (setq allLines '())
 
            ;; 根据鼠标指向的实体生成扩展数据的显示文本
            (foreach appDatas xDatas 
-             (setq lines '())
+             (setq appLines '())
              (foreach data appDatas 
                (setq cnt    (1+ cnt)
                      cntStr (itoa cnt)
@@ -350,24 +341,22 @@
                  )
                  ((= (type data) 'STR) (setq thisLine data) (setq rflag 1))
                )
-               (if rflag (setq lines (cons thisLine lines)))
+               (if rflag (setq appLines (cons thisLine appLines)))
              )
-             (setq allLines (cons (reverse lines) allLines))
+             (setq allLines (cons (reverse appLines) allLines))
            )
 
            ;; 更新显示文本
-           (setq i 0)
-           (setq pt (calculateRelativePoint pt d (* -2 d))
-                 i  0
-                 w  0.0
+           (setq i       0
+                 maxWide 0.0
+                 pt      (calculateRelativePoint pt d (* -2 d))
            )
-           (redraw)
-           (redraw ent 3)
-           (if (or (and ent (not oldEnt)) (not (equal oldEnt ent))) 
+           ; (if (or (and ent (not oldEnt)) (not (equal oldEnt ent)))
+           (if (/= ent oldEnt) 
              (progn 
-               (if oldEnt 
-                 (redraw oldEnt 4)
-               )
+               (if oldEnt (redraw oldEnt 4))
+               (redraw ent 3)
+               (setq oldEnt ent)
                (if txtList 
                  (progn 
                    (while (< 0 (length txtList)) 
@@ -396,10 +385,12 @@
                            '(41 . 0.9)
                      )
                    )
-                   (setq en (entlast))
-                   (setq txtList (cons en txtList))
-                   (if (> (car (cadr (textbox (entget en)))) w) 
-                     (setq w (car (cadr (textbox (entget en)))))
+                   (setq en       (entlast)
+                         txtList  (cons en txtList)
+                         thisWide (car (cadr (textbox (entget en))))
+                   )
+                   (if (> thisWide maxWide) 
+                     (setq maxWide thisWide)
                    )
                    (setq i (1+ i))
                  )
@@ -408,28 +399,28 @@
              (if txtList 
                (progn 
                  (foreach tx (reverse txtList) 
-                   (setq en (entget tx)
-                         en (modifyEntityDxf en 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
-                         en (modifyEntityDxf en 40 d)
+                   (setq en       (entget tx)
+                         en       (modifyEntityDxf en 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
+                         en       (modifyEntityDxf en 40 d)
+                         thisWide (car (cadr (textbox en)))
                    )
                    (entmod en)
-                   (if (> (car (cadr (textbox en))) w) 
-                     (setq w (car (cadr (textbox en))))
+                   (if (> thisWide maxWide) 
+                     (setq maxWide thisWide)
                    )
                    (setq i (1+ i))
                  )
                )
              )
            )
-           (setq oldEnt ent)
-           (redraw oldEnt 4)
+
+
            (setq h  (* -0.75 d (length txtList))
                  en (entget lwplBackground)
-                 en (updatePolyline en (list (calculateRelativePoint pt 0 (+ h (* 1.5 d))) (calculateRelativePoint pt (+ (* 0.3 d) w) (+ h (* 1.5 d)))))
+                 en (updatePolyline en (list (calculateRelativePoint pt 0 (+ h (* 1.5 d))) (calculateRelativePoint pt (+ (* 0.3 d) maxWide) (+ h (* 1.5 d)))))
                  en (modifyEntityDxf en 43 (+ (* -2 h) (* 0.65 d)))
            )
            (entmod en)
-           (redraw)
          )
          (if txtList 
            (progn 
