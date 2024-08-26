@@ -1,4 +1,4 @@
-(defun c:xvg (/ code d apData dclRe dclName en ent f gr i cnt eachCol total inf thisKey appKeyList allKeyList xDatas loop lst1 lst2 lwplBackground n name nEnt oldEnt pt ptList ss str str1 txtList maxWide ww x y xdTypeCode) 
+(defun c:xvg (/ code d apData dclRe dclName en thisEnt f gr i cnt eachCol total inf thisKey appKeyList allKeyList xDatas loop lst1 lst2 lwplBackground n name nEnt oldEnt pt ptList ss str str1 txtList maxWide ww x y xdTypeCode) 
   ; 编辑实体的扩展数据
 
   ;; 错误处理
@@ -6,6 +6,7 @@
     (setq inf (strcase inf t))
     (if (wcmatch inf "*break*,*cancel*,*exit*,*取消*,*中断*") 
       (deleteTextObjects txtList)
+      ; (redraw thisEnt 4)
     )
     (vla-endundomark (vla-get-activedocument (vlax-get-acad-object)))
     (princ)
@@ -152,6 +153,7 @@
   ;; 初始化变量
   (setq loop    t
         txtList '()
+        thisEnt nil
         oldEnt  nil
   )
 
@@ -178,9 +180,9 @@
     (cond 
       ((= code 3) ; 鼠标左击
        ;  (deleteTextObjects txtList)
-       (if ent 
+       (if thisEnt 
          (progn 
-           (if (setq xDatas (cdr (assoc -3 (entget ent '("*"))))) 
+           (if (setq xDatas (cdr (assoc -3 (entget thisEnt '("*"))))) 
              (progn 
                ;; 创建临时DCL文件
                (setq dclName (vl-filename-mktemp "yx.dcl")
@@ -281,17 +283,16 @@
       )
 
       ((= code 5) ; 鼠标移动
-       (redraw)
        (if 
          (and 
            (setq d (* (/ (getvar "viewsize") (cadr (getvar "screensize"))) (getvar "pickbox")))
-           (setq ent (nentselp pt)
-                 ent (if (and ent (= (type (last (last ent))) 'ename)) 
-                       (last (last ent))
-                       (car ent)
-                     )
+           (setq thisEnt (nentselp pt)
+                 thisEnt (if (and thisEnt (= (type (last (last thisEnt))) 'ename)) 
+                           (last (last thisEnt))
+                           (car thisEnt)
+                         )
            )
-           (setq xDatas (cdr (assoc -3 (entget ent '("*")))))
+           (setq xDatas (cdr (assoc -3 (entget thisEnt '("*")))))
          )
          (progn 
            (setq cnt      0
@@ -352,18 +353,18 @@
                  pt      (calculateRelativePoint pt d (* -2 d))
            )
            ; (if (or (and ent (not oldEnt)) (not (equal oldEnt ent)))
-           (if (/= ent oldEnt) 
+           (if (/= thisEnt oldEnt) 
              (progn 
-               (if oldEnt (redraw oldEnt 4))
-               (redraw ent 3)
-               (setq oldEnt ent)
+               ;  (if oldEnt (redraw oldEnt 4))
+               ;  (redraw thisEnt 3)
+               (setq oldEnt thisEnt)
                (if txtList 
                  (progn 
                    (while (< 0 (length txtList)) 
                      (entdel (car txtList))
                      (setq txtList (cdr txtList))
                    )
-                   (setq oldEnt nil)
+                   ;  (setq oldEnt nil)
                    (if lwplBackground 
                      (progn 
                        (setq en (entget lwplBackground)
@@ -385,12 +386,9 @@
                            '(41 . 0.9)
                      )
                    )
-                   (setq en       (entlast)
-                         txtList  (cons en txtList)
-                         thisWide (car (cadr (textbox (entget en))))
-                   )
-                   (if (> thisWide maxWide) 
-                     (setq maxWide thisWide)
+                   (setq en      (entlast)
+                         txtList (cons en txtList)
+                         maxWide (max maxWide (car (cadr (textbox (entget en)))))
                    )
                    (setq i (1+ i))
                  )
@@ -399,15 +397,12 @@
              (if txtList 
                (progn 
                  (foreach tx (reverse txtList) 
-                   (setq en       (entget tx)
-                         en       (modifyEntityDxf en 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
-                         en       (modifyEntityDxf en 40 d)
-                         thisWide (car (cadr (textbox en)))
+                   (setq en      (entget tx)
+                         en      (modifyEntityDxf en 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
+                         en      (modifyEntityDxf en 40 d)
+                         maxWide (max maxWide (car (cadr (textbox en))))
                    )
                    (entmod en)
-                   (if (> thisWide maxWide) 
-                     (setq maxWide thisWide)
-                   )
                    (setq i (1+ i))
                  )
                )
@@ -428,7 +423,7 @@
                (entdel (car txtList))
                (setq txtList (cdr txtList))
              )
-             (setq oldEnt nil)
+             ;  (setq oldEnt nil)
              (if lwplBackground 
                (progn 
                  (setq en (entget lwplBackground)
@@ -440,6 +435,7 @@
            )
          )
        )
+       ;  (redraw)
       )
 
       ((or  ; 鼠标右击
