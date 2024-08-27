@@ -1,24 +1,45 @@
-(defun c:xvg (/ code d apData dclRe dclName en thisEnt f gr i cnt eachCol total inf thisKey appKeyList allKeyList xDatas loop lst1 lst2 lwplBackground n name nEnt oldEnt pt ptList ss str str1 txtList maxWide ww x y xdTypeCode) 
+(defun c:xvg (/ eventCode scaleR apData dclHandle dclName elist mouseCoor mouseEntCur mouseEntLast f grList lineIndex cnt eachCol total inf xDatas xdTypeCode thisKey appKeyList allKeyList loop annoBgLwpl annoList maxWide xdTypeCode) 
   ; 编辑实体的扩展数据
 
   ;; 错误处理
   (defun *error* (inf) 
     (setq inf (strcase inf t))
     (if (wcmatch inf "*break*,*cancel*,*exit*,*取消*,*中断*") 
-      (deleteTextObjects txtList)
-      ; (redraw thisEnt 4)
+      (resetAnnoObjects)
+      (entdel annoBgLwpl)
+      ; (redraw mouseEntCur 4)
     )
     (vla-endundomark (vla-get-activedocument (vlax-get-acad-object)))
     (princ)
   )
 
+  ;; 辅助函数：移除提示对象，仅程序结束时调用
+  (defun resetAnnoObjects (/ ent txt) 
+    (if annoList 
+      (progn 
+        (foreach txt annoList 
+          (entdel txt)
+        )
+        (setq annoList '())
+      )
+    )
+    (if annoBgLwpl 
+      (progn 
+        (setq ent (entget annoBgLwpl)
+              ent (updatePolyline ent (list '(0.0 0.0) '(0.0 0.0)))
+        )
+        (entmod (modifyEntityDxf ent 43 0.0))
+      )
+    )
+  )
+
   ;; 辅助函数：计算相对坐标
-  (defun calculateRelativePoint (pt w ww) 
-    (list (+ (car pt) w) (+ (cadr pt) ww))
+  (defun calculateRelativePoint (pt offX offY /) 
+    (mapcar '+ pt (list offX offY))
   )
 
   ;; 辅助函数：获取实体的指定DXF代码值
-  (defun getDxfValue (ent n) 
+  (defun getDxfValue (ent n /) 
     (if (= (type ent) 'ename) 
       (setq ent (entget ent))
     )
@@ -26,7 +47,7 @@
   )
 
   ;; 辅助函数：修改实体的指定DXF代码值
-  (defun modifyEntityDxf (ent i n) 
+  (defun modifyEntityDxf (ent i n /) 
     (subst 
       (cons i n)
       (assoc i ent)
@@ -53,25 +74,10 @@
     )
   )
 
-  ;; 辅助函数：删除显示的文本对象列表
-  (defun deleteTextObjects (txtList / en i x) 
-    (foreach x txtList 
-      (entdel x)
-    )
-    (if lwplBackground 
-      (progn 
-        (setq en (entget lwplBackground)
-              en (updatePolyline en (list '(0.0 0.0) '(0.0 0.0)))
-        )
-        (entmod (modifyEntityDxf en 43 0.0))
-      )
-    )
-  )
-
   ;; 辅助函数：写入扩展数据
   ;; get_attr (AutoLISP/DCL): https://help.autodesk.com/view/OARX/2025/CHS/?guid=GUID-AB9100B0-F19E-4C29-B82A-28E8A607BF4E
   ;; get_tile (AutoLISP/DCL): https://help.autodesk.com/view/OARX/2025/CHS/?guid=GUID-3BD2F6DF-DCD5-4A00-9BDF-E2C7C7C286F8
-  (defun writeXData (name allKeyList / partXDList newXDList x) 
+  (defun writeXData (ent allKeyList / partXDList newXDList) 
     (setq newXDList '())
     (foreach appKeyList allKeyList 
       (setq partXDList '())
@@ -112,49 +118,49 @@
     )
     (entmod 
       (append 
-        (entget name)
+        (entget ent)
         (list (cons -3 newXDList))
       )
     )
   )
 
   ;; 辅助函数：将列表转换为字符串
-  (defun listToString (lst / n str) 
-    (setq str "")
-    (foreach n lst 
-      (setq str (strcat str (if (= (type n) 'STR) n (rtos n 2 3)) " "))
+  (defun listToString (oriList / each newStr) 
+    (setq newStr "")
+    (foreach each oriList 
+      (setq newStr (strcat newStr (if (= (type each) 'newStr) each (rtos each 2 3)) " "))
     )
-    str
+    newStr
   )
 
   ;; 辅助函数：将字符串转换为列表
-  (defun stringToList (str / i lst str1) 
-    (setq lst '()
-          i   1
+  (defun stringToList (oriStr / index newList str) 
+    (setq newList '()
+          index   1
     )
-    (while (/= str "") 
-      (if (= (substr str i 1) " ") 
-        (setq str1 (substr str 1 (1- i))
-              lst  (cons (atof str1) lst)
-              str  (substr str (1+ i))
-              i    1
+    (while (/= oriStr "") 
+      (if (= (substr oriStr index 1) " ") 
+        (setq str     (substr oriStr 1 (1- index))
+              newList (cons (atof str) newList)
+              oriStr  (substr oriStr (1+ index))
+              index   1
         )
-        (setq i (1+ i))
+        (setq index (1+ index))
       )
     )
-    (reverse lst)
+    (reverse newList)
   )
 
   ;; 主程序逻辑
   (setvar "cmdecho" 0) ; 关闭命令响应
   (vl-load-com)
 
-  ; (prompt "\n    鼠标移动查询信息，左键编辑，右键退出！")
+  (prompt "\n[xDataEdit] 鼠标移动查询信息，点选编辑，右键退出！")
   ;; 初始化变量
-  (setq loop    t
-        txtList '()
-        thisEnt nil
-        oldEnt  nil
+  (setq loop         t
+        annoList     '()
+        mouseEntCur  nil
+        mouseEntLast nil
   )
 
   ;; 创建一个临时多段线实体用于显示文本框
@@ -162,27 +168,28 @@
     (list '(0 . "LWPOLYLINE") 
           '(100 . "AcDbEntity")
           '(100 . "AcDbPolyline")
-          (cons 62 186)
+          (cons 62 186) ;; 背景颜色：186号色
           (cons 90 2)
           (cons 10 '(0.0 0.0))
           (cons 10 '(0.0 0.0))
     )
   )
-  (setq lwplBackground (entlast))
-  (command "DRAWORDER" lwplBackground "" "B")
+  (setq annoBgLwpl (entlast))
+  (command "DRAWORDER" annoBgLwpl "" "B")
 
   ;; 主要循环：监听用户的鼠标操作
   (while loop 
-    (setq gr   (grread t 4 2)
-          code (car gr)
-          pt   (cadr gr)
+    (setq grList    (grread t 4 2)
+          eventCode (car grList)
+          mouseCoor (cadr grList)
+          scaleR    (* (/ (getvar "viewsize") (cadr (getvar "screensize"))) (getvar "pickbox")) ;  scaleR = 当前视图的高度 / 屏幕像素高度(y) * 选择框大小
     )
     (cond 
-      ((= code 3) ; 鼠标左击
-       ;  (deleteTextObjects txtList)
-       (if thisEnt 
+      ((= eventCode 3) ; 鼠标左击
+       ;  (deleteTextObjects)
+       (if mouseEntCur 
          (progn 
-           (if (setq xDatas (cdr (assoc -3 (entget thisEnt '("*"))))) 
+           (if (setq xDatas (cdr (assoc -3 (entget mouseEntCur '("*"))))) 
              (progn 
                ;; 创建临时DCL文件
                (setq dclName (vl-filename-mktemp "yx.dcl")
@@ -268,12 +275,12 @@
                (close f)
 
                ;; 加载并显示DCL对话框
-               (setq dclRe (load_dialog dclName))
-               (new_dialog "yx1" dclRe)
+               (setq dclHandle (load_dialog dclName))
+               (new_dialog "yx1" dclHandle)
                ;  (setq i 0)
-               (action_tile "e01" "(writeXData ent allKeyList)(done_dialog 1)")
+               (action_tile "e01" "(writeXData mouseEntCur allKeyList)(done_dialog 1)")
                (start_dialog)
-               (unload_dialog dclRe)
+               (unload_dialog dclHandle)
                (vl-file-delete dclName)
              )
              (princ "\n没有扩展数据!")
@@ -282,18 +289,18 @@
        )
       )
 
-      ((= code 5) ; 鼠标移动
+      ((= eventCode 5) ; 鼠标移动
        (if 
          (and 
-           (setq d (* (/ (getvar "viewsize") (cadr (getvar "screensize"))) (getvar "pickbox")))
-           (setq thisEnt (nentselp pt)
-                 thisEnt (if (and thisEnt (= (type (last (last thisEnt))) 'ename)) 
-                           (last (last thisEnt))
-                           (car thisEnt)
-                         )
+           (setq mouseEntCur (nentselp mouseCoor)
+                 mouseEntCur (if (and mouseEntCur (= (type (last (last mouseEntCur))) 'ename)) 
+                               (last (last mouseEntCur))
+                               (car mouseEntCur)
+                             )
            )
-           (setq xDatas (cdr (assoc -3 (entget thisEnt '("*")))))
+           (setq xDatas (cdr (assoc -3 (entget mouseEntCur '("*")))))
          )
+         ; Y：有找到带xdata的对象
          (progn 
            (setq cnt      0
                  total    0
@@ -348,101 +355,82 @@
            )
 
            ;; 更新显示文本
-           (setq i       0
-                 maxWide 0.0
-                 pt      (calculateRelativePoint pt d (* -2 d))
+           (setq lineIndex     0
+                 maxWide       0.0
+                 textBasePoint (calculateRelativePoint mouseCoor scaleR (* -2 scaleR))
            )
-           ; (if (or (and ent (not oldEnt)) (not (equal oldEnt ent)))
-           (if (/= thisEnt oldEnt) 
+           ; (if (or (and ent (not mouseEntLast)) (not (equal mouseEntLast ent)))
+           (if (/= mouseEntCur mouseEntLast) 
+             ;; 更新提示内容
              (progn 
-               ;  (if oldEnt (redraw oldEnt 4))
-               ;  (redraw thisEnt 3)
-               (setq oldEnt thisEnt)
-               (if txtList 
+               ;  (if mouseEntLast (redraw mouseEntLast 4))
+               ;  (redraw mouseEntCur 3)
+               (setq mouseEntLast mouseEntCur)
+               ; 删除当前提示文字
+               (if annoList 
                  (progn 
-                   (while (< 0 (length txtList)) 
-                     (entdel (car txtList))
-                     (setq txtList (cdr txtList))
+                   (foreach txt annoList 
+                     (entdel txt)
                    )
-                   ;  (setq oldEnt nil)
-                   (if lwplBackground 
-                     (progn 
-                       (setq en (entget lwplBackground)
-                             en (updatePolyline en (list '(0.0 0.0) '(0.0 0.0)))
-                       )
-                       (entmod (modifyEntityDxf en 43 0.0))
-                     )
-                   )
+                   (setq annoList '())
                  )
                )
+               ;; 绘制新的提示文字
                (foreach y (reverse allLines) 
                  (foreach x y 
                    (entmake 
                      (list '(0 . "TEXT") 
-                           (cons 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
+                           (cons 10 (calculateRelativePoint textBasePoint 0 (* -1.5 scaleR lineIndex)))
                            (cons 62 6)
-                           (cons 40 d)
+                           (cons 40 scaleR)
                            (cons 1 x)
                            '(41 . 0.9)
                      )
                    )
-                   (setq en      (entlast)
-                         txtList (cons en txtList)
-                         maxWide (max maxWide (car (cadr (textbox (entget en)))))
+                   (setq ent      (entlast)
+                         annoList (cons ent annoList)
+                         maxWide  (max maxWide (car (cadr (textbox (entget ent)))))
                    )
-                   (setq i (1+ i))
+                   (setq lineIndex (1+ lineIndex))
                  )
                )
              )
-             (if txtList 
+             ;; 移动文字和调整字号
+             (if annoList 
                (progn 
-                 (foreach tx (reverse txtList) 
-                   (setq en      (entget tx)
-                         en      (modifyEntityDxf en 10 (calculateRelativePoint pt 0 (* -1.5 d i)))
-                         en      (modifyEntityDxf en 40 d)
-                         maxWide (max maxWide (car (cadr (textbox en))))
+                 (foreach txt annoList 
+                   (setq elist     (entget txt)
+                         elist     (modifyEntityDxf elist 10 (calculateRelativePoint textBasePoint 0 (* -1.5 scaleR lineIndex)))
+                         elist     (modifyEntityDxf elist 40 scaleR)
+                         maxWide   (max maxWide (car (cadr (textbox elist))))
+                         lineIndex (1+ lineIndex)
                    )
-                   (entmod en)
-                   (setq i (1+ i))
+                   (entmod elist)
                  )
                )
              )
            )
-
-
-           (setq h  (* -0.75 d (length txtList))
-                 en (entget lwplBackground)
-                 en (updatePolyline en (list (calculateRelativePoint pt 0 (+ h (* 1.5 d))) (calculateRelativePoint pt (+ (* 0.3 d) maxWide) (+ h (* 1.5 d)))))
-                 en (modifyEntityDxf en 43 (+ (* -2 h) (* 0.65 d)))
+           ;; 调整背景
+           (setq bgHeight (* -0.75 scaleR (length annoList))
+                 bgLeft   (calculateRelativePoint textBasePoint 0 (+ bgHeight (* 1.5 scaleR)))
+                 bgRight  (calculateRelativePoint textBasePoint (+ (* 0.3 scaleR) maxWide) (+ bgHeight (* 1.5 scaleR)))
+                 elist    (updatePolyline (entget annoBgLwpl) (list bgLeft bgRight))
+                 elist    (modifyEntityDxf elist 43 (+ (* -2 bgHeight) (* 0.65 scaleR)))
            )
-           (entmod en)
+           (entmod elist)
          )
-         (if txtList 
-           (progn 
-             (while (< 0 (length txtList)) 
-               (entdel (car txtList))
-               (setq txtList (cdr txtList))
-             )
-             ;  (setq oldEnt nil)
-             (if lwplBackground 
-               (progn 
-                 (setq en (entget lwplBackground)
-                       en (updatePolyline en (list '(0.0 0.0) '(0.0 0.0)))
-                 )
-                 (entmod (modifyEntityDxf en 43 0.0))
-               )
-             )
-           )
-         )
+         ;; N: 没找到符合条件的对象
+         ;  (setq mouseEntLast nil)
+         (resetAnnoObjects)
        )
        ;  (redraw)
       )
 
       ((or  ; 鼠标右击
-           (= code 11)
-           (= code 25)
+           (= eventCode 11)
+           (= eventCode 25)
        )
-       (deleteTextObjects txtList)
+       (resetAnnoObjects)
        (setq loop nil)
       )
       (t)
