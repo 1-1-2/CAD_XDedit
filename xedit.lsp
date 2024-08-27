@@ -9,7 +9,7 @@
       (entdel annoBgLwpl)
       ; (redraw mouseEntCur 4)
     )
-    (vla-endundomark (vla-get-activedocument (vlax-get-acad-object)))
+    (vla-EndUndoMark doc)
     (princ)
   )
 
@@ -161,7 +161,9 @@
         annoList     '()
         mouseEntCur  nil
         mouseEntLast nil
+        doc          (vla-get-ActiveDocument (vlax-get-acad-object))
   )
+  (vla-StartUndoMark doc)
 
   ;; 创建一个临时多段线实体用于显示文本框
   (entmake 
@@ -418,6 +420,8 @@
                  elist    (modifyEntityDxf elist 43 (+ (* -2 bgHeight) (* 0.65 scaleR)))
            )
            (entmod elist)
+           ;  (vla-MoveToBottom (vlax-ename->vla-object annoBgLwpl))
+           ; (command "DRAWORDER" annoBgLwpl "" "B")
          )
          ;; N: 没找到符合条件的对象
          ;  (setq mouseEntLast nil)
