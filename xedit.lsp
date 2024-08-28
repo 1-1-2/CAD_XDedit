@@ -1,4 +1,4 @@
-(defun c:xvg (/ eventCode scaleR apData dclHandle dclName elist mouseCoor mouseEntCur mouseEntLast f grList lineIndex cnt eachCol total inf xDatas xdTypeCode thisKey appKeyList allKeyList loop annoBgLwpl annoList maxWide xdTypeCode) 
+(defun c:xvg (/ eventCode scaleR apData dclHandle dclName txtElist plElist mouseCoor mouseEntCur mouseEntLast f grList lineIndex cnt eachCol total inf xDatas xdTypeCode appKeyList allKeyList loop annoBgLwpl annoList maxWide xdTypeCode) 
   ; 编辑实体的扩展数据
 
   ;; 错误处理
@@ -34,7 +34,7 @@
   )
 
   ;; 辅助函数：计算相对坐标
-  (defun calculateRelativePoint (pt offX offY /) 
+  (defun pointOffset (pt offX offY /) 
     (mapcar '+ pt (list offX offY))
   )
 
@@ -184,7 +184,7 @@
     (setq grList    (grread t 4 2)
           eventCode (car grList)
           mouseCoor (cadr grList)
-          scaleR    (* (/ (getvar "viewsize") (cadr (getvar "screensize"))) (getvar "pickbox")) ;  scaleR = 当前视图的高度 / 屏幕像素高度(y) * 选择框大小
+          scaleR    (* (/ (getvar "viewsize") (cadr (getvar "screensize"))) (getvar "pickbox") 1.5) ;  scaleR = 当前视图的高度 / 屏幕像素高度(y) * 选择框大小
     )
     (cond 
       ((= eventCode 3) ; 鼠标左击
@@ -359,7 +359,7 @@
            ;; 更新显示文本
            (setq lineIndex     0
                  maxWide       0.0
-                 textBasePoint (calculateRelativePoint mouseCoor scaleR (* -2 scaleR))
+                 annoBasePoint (pointOffset mouseCoor (* 2 scaleR) (* 10 scaleR))
            )
            ; (if (or (and ent (not mouseEntLast)) (not (equal mouseEntLast ent)))
            (if (/= mouseEntCur mouseEntLast) 
@@ -382,8 +382,8 @@
                  (foreach x y 
                    (entmake 
                      (list '(0 . "TEXT") 
-                           (cons 10 (calculateRelativePoint textBasePoint 0 (* -1.5 scaleR lineIndex)))
-                           (cons 62 6)
+                           (cons 10 (pointOffset annoBasePoint 0 (* -1.5 scaleR lineIndex)))
+                           (cons 62 2) ;; 文字黄色
                            (cons 40 scaleR)
                            (cons 1 x)
                            '(41 . 0.9)
@@ -401,25 +401,25 @@
              (if annoList 
                (progn 
                  (foreach txt annoList 
-                   (setq elist     (entget txt)
-                         elist     (modifyEntityDxf elist 10 (calculateRelativePoint textBasePoint 0 (* -1.5 scaleR lineIndex)))
-                         elist     (modifyEntityDxf elist 40 scaleR)
-                         maxWide   (max maxWide (car (cadr (textbox elist))))
+                   (setq txtElist  (entget txt)
+                         txtElist  (modifyEntityDxf txtElist 10 (pointOffset annoBasePoint 0 (* -1.5 scaleR lineIndex)))
+                         txtElist  (modifyEntityDxf txtElist 40 scaleR)
+                         maxWide   (max maxWide (car (cadr (textbox txtElist))))
                          lineIndex (1+ lineIndex)
                    )
-                   (entmod elist)
+                   (entmod txtElist)
                  )
                )
              )
            )
            ;; 调整背景
            (setq bgHeight (* -0.75 scaleR (length annoList))
-                 bgLeft   (calculateRelativePoint textBasePoint 0 (+ bgHeight (* 1.5 scaleR)))
-                 bgRight  (calculateRelativePoint textBasePoint (+ (* 0.3 scaleR) maxWide) (+ bgHeight (* 1.5 scaleR)))
-                 elist    (updatePolyline (entget annoBgLwpl) (list bgLeft bgRight))
-                 elist    (modifyEntityDxf elist 43 (+ (* -2 bgHeight) (* 0.65 scaleR)))
+                 bgLeft   (pointOffset annoBasePoint 0 (+ bgHeight (* 1.25 scaleR)))
+                 bgRight  (pointOffset annoBasePoint (+ (* 0.3 scaleR) maxWide) (+ bgHeight (* 1.25 scaleR)))
+                 plElist  (updatePolyline (entget annoBgLwpl) (list bgLeft bgRight)) ;; 更新左右端点
+                 plElist  (modifyEntityDxf plElist 43 (+ (* -2 bgHeight) (* 0.65 scaleR))) ;; 更新高度
            )
-           (entmod elist)
+           (entmod plElist)
            ;  (vla-MoveToBottom (vlax-ename->vla-object annoBgLwpl))
            ; (command "DRAWORDER" annoBgLwpl "" "B")
          )
